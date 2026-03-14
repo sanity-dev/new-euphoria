@@ -1,18 +1,18 @@
 # ==========================
-# Virtual environment
+# Entorno virtual
 # ==========================
 venv/
 .env
 
 # ==========================
-# Python cache & bytecode
+# Archivos de Python compilados
 # ==========================
 __pycache__/
 *.py[cod]
 *$py.class
 
 # ==========================
-# Logs and database
+# Logs, bases de datos locales
 # ==========================
 *.log
 *.sqlite3
@@ -28,7 +28,7 @@ __pycache__/
 *.sublime-workspace
 
 # ==========================
-# Python packaging
+# Python packaging / build
 # ==========================
 *.egg-info/
 dist/
@@ -37,7 +37,7 @@ build/
 *.egg
 
 # ==========================
-# Testing / Coverage
+# Testing / coverage
 # ==========================
 htmlcov/
 .tox/
@@ -52,28 +52,12 @@ coverage.xml
 *.py,cover
 
 # ==========================
-# Azure / cloud / secrets
-# ==========================
-azure*.json
-*.publishsettings
-*.azurePubxml
-*.pubxml
-*.pubxml.user
-
-# ==========================
-# Uvicorn / FastAPI / temp files
-# ==========================
-*.pid
-*.sock
-*.db
-
-# ==========================
-# Jupyter Notebook checkpoints
+# Jupyter Notebook
 # ==========================
 .ipynb_checkpoints/
 
 # ==========================
-# Misc / OS files
+# Sistema / Misc
 # ==========================
 .DS_Store
 Thumbs.db
