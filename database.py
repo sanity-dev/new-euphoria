@@ -74,7 +74,13 @@ def get_or_create_conversation(session_id: str, user_id: Optional[int] = None) -
 
         if conv:
             conv.updated_at = datetime.utcnow()
-            db.commit()
+            # Si la conversación existe pero no tiene user_id y se proporciona uno, actualizarlo
+            if conv.user_id is None and user_id is not None:
+                conv.user_id = user_id
+                db.commit()
+                print(f"[DEBUG] Actualizado user_id={user_id} para conversation_id={conv.id}")
+            else:
+                db.commit()
             return conv.id
         else:
             new_conv = Conversation(session_id=session_id, user_id=user_id)
@@ -100,6 +106,75 @@ def deactivate_conversation(session_id: str) -> bool:
     finally:
         db.close()
 
+
+def migrate_conversations_with_user_id() -> int:
+    """
+    Migra las conversaciones antiguas extrayendo el user_id del session_id.
+    Retorna la cantidad de conversaciones actualizadas.
+    """
+    import re
+    db = get_session()
+    try:
+        # Buscar todas las conversaciones con user_id = NULL
+        null_user_convs = (
+            db.query(Conversation)
+            .filter(Conversation.user_id == None)
+            .all()
+        )
+        
+        updated_count = 0
+        for conv in null_user_convs:
+            # Intentar extraer user_id de session_id con patrón mood_check_{user_id}_{timestamp}
+            match = re.match(r'^mood_check_(\d+)_\d+$', conv.session_id)
+            if match:
+                conv.user_id = int(match.group(1))
+                updated_count += 1
+                print(f"[MIGRATE] conversation_id={conv.id} session_id={conv.session_id} -> user_id={conv.user_id}")
+        
+        if updated_count > 0:
+            db.commit()
+            print(f"[MIGRATE] {updated_count} conversaciones actualizadas")
+        
+        return updated_count
+    except Exception as e:
+        db.rollback()
+        print(f"[MIGRATE] Error: {e}")
+        return 0
+    finally:
+        db.close()
+
+def get_user_conversations(user_id: int) -> list[dict]:
+    """Devuelve el historial de sesiones de un usuario."""
+    db = get_session()
+    try:
+        conversations = (
+            db.query(Conversation)
+            .filter(Conversation.user_id == user_id)
+            .order_by(Conversation.updated_at.desc())
+            .all()
+        )
+        
+        result = []
+        for conv in conversations:
+            # Obtener el primer mensaje del usuario como resumen/título
+            first_msg = (
+                db.query(Message)
+                .filter(Message.conversation_id == conv.id, Message.role == "usuario")
+                .order_by(Message.timestamp.asc())
+                .first()
+            )
+            title = first_msg.content[:40] + "..." if first_msg and len(first_msg.content) > 40 else (first_msg.content if first_msg else "Nueva conversación")
+            
+            result.append({
+                "session_id": conv.session_id,
+                "created_at": conv.created_at.isoformat(),
+                "updated_at": conv.updated_at.isoformat(),
+                "is_active": conv.is_active,
+                "title": title
+            })
+        return result
+    finally:
+        db.close()
 
 # ═══════════════════════════════════════════════════════════
 # Mensajes
@@ -128,18 +203,35 @@ def save_message(
         db.close()
 
 
-def get_messages(session_id: str, limit: int = 50) -> list[dict]:
+def get_messages(session_id: str, limit: int = 50, include_inactive: bool = False) -> list[dict]:
     """Lista de mensajes de la sesión más reciente, ordenados cronológicamente."""
     db = get_session()
     try:
+        # Subquery para obtener la conversación más reciente (activa o no según corresponda)
+        conv_query = (
+            db.query(Conversation.id)
+            .filter(Conversation.session_id == session_id)
+        )
+        if not include_inactive:
+            conv_query = conv_query.filter(Conversation.is_active == True)
+        
+        # Obtener el ID de la conversación más reciente
+        latest_conv = conv_query.order_by(Conversation.updated_at.desc()).first()
+        
+        if not latest_conv:
+            print(f"[DEBUG] No conversation found for session_id={session_id}, include_inactive={include_inactive}")
+            return []
+        
+        # Obtener mensajes de esa conversación específica
         rows = (
             db.query(Message)
-            .join(Conversation)
-            .filter(Conversation.session_id == session_id, Conversation.is_active == True)
+            .filter(Message.conversation_id == latest_conv[0])
             .order_by(Message.timestamp.asc())
             .limit(limit)
             .all()
         )
+
+        print(f"[DEBUG] Found {len(rows)} messages for session_id={session_id}, conversation_id={latest_conv[0]}")
 
         result = []
         for msg in rows:
@@ -232,29 +324,97 @@ def deactivate_reminder(reminder_id: int) -> bool:
 
 
 # ═══════════════════════════════════════════════════════════
-# Álbum
+# Álbum (metadata ligera)
 # ═══════════════════════════════════════════════════════════
 
-def save_album_entry(
+def save_album_entry_metadata(
     user_id: int,
     session_id: str,
-    content: Optional[str] = None,
-    image_url: Optional[str] = None,
+    diary_entry_id: int,
     entry_type: str = "texto",
+    mood_tag: Optional[str] = None,
+    is_synced: bool = True,
 ) -> int:
-    """Guarda una entrada de álbum y retorna su ID."""
+    """Guarda metadata ligera de una entrada de álbum y retorna su ID."""
     db = get_session()
     try:
         entry = AlbumEntry(
             user_id=user_id,
             session_id=session_id,
-            content=content,
-            image_url=image_url,
+            diary_entry_id=diary_entry_id,
             entry_type=entry_type,
+            mood_tag=mood_tag,
+            is_synced=is_synced,
         )
         db.add(entry)
         db.commit()
         db.refresh(entry)
         return entry.id
+    finally:
+        db.close()
+
+
+def get_album_entries(user_id: int, limit: int = 50) -> list[dict]:
+    """Obtiene las entradas de álbum de un usuario (metadata ligera)."""
+    db = get_session()
+    try:
+        entries = (
+            db.query(AlbumEntry)
+            .filter(AlbumEntry.user_id == user_id)
+            .order_by(AlbumEntry.created_at.desc())
+            .limit(limit)
+            .all()
+        )
+
+        return [
+            {
+                "id": entry.id,
+                "diary_entry_id": entry.diary_entry_id,
+                "entry_type": entry.entry_type,
+                "mood_tag": entry.mood_tag,
+                "is_synced": entry.is_synced,
+                "created_at": entry.created_at.isoformat() if entry.created_at else "",
+            }
+            for entry in entries
+        ]
+    finally:
+        db.close()
+
+
+def delete_album_entry(entry_id: int) -> bool:
+    """Elimina una entrada de álbum (solo metadata local)."""
+    db = get_session()
+    try:
+        affected = (
+            db.query(AlbumEntry)
+            .filter(AlbumEntry.id == entry_id)
+            .delete()
+        )
+        db.commit()
+        return affected > 0
+    finally:
+        db.close()
+
+
+def get_album_entry_by_diary_id(diary_entry_id: int) -> dict | None:
+    """Obtiene la metadata local basada en el ID del microservicio de Diario."""
+    db = get_session()
+    try:
+        entry = (
+            db.query(AlbumEntry)
+            .filter(AlbumEntry.diary_entry_id == diary_entry_id)
+            .first()
+        )
+        
+        if entry:
+            return {
+                "id": entry.id,
+                "diary_entry_id": entry.diary_entry_id,
+                "entry_type": entry.entry_type,
+                "mood_tag": entry.mood_tag,
+                "is_synced": entry.is_synced,
+                "created_at": entry.created_at.isoformat() if entry.created_at else "",
+            }
+        return None
     finally:
         db.close()

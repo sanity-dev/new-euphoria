@@ -1,6 +1,7 @@
 """
 Sanity Agent – Tool: Reminders
 Gestión de recordatorios de hábitos saludables.
+Requiere token de autenticación para acceder a los datos.
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ def create_healthy_habit_reminder(
     description: str = "",
     frequency: str = "diario",
     reminder_time: str = "",
+    auth_token: str = "",
 ) -> str:
     """Crea un recordatorio de hábito saludable para el usuario.
     Usa esta herramienta cuando el usuario quiera establecer un recordatorio
@@ -37,6 +39,7 @@ def create_healthy_habit_reminder(
         description: Descripción detallada del hábito.
         frequency: Frecuencia: 'diario', 'semanal', 'cada 2 horas', etc.
         reminder_time: Hora del recordatorio en formato HH:MM (ej: '08:00').
+        auth_token: Token JWT de autenticación.
     """
     try:
         # 1. Guardar en base de datos del agente
@@ -49,8 +52,10 @@ def create_healthy_habit_reminder(
             reminder_time=reminder_time if reminder_time else None,
         )
 
-        # 2. Crear notificación en el servicio de notificaciones
+        # 2. Crear notificación en el servicio de notificaciones (con auth)
         try:
+            headers = {"Authorization": f"Bearer {auth_token}"} if auth_token else {}
+            
             payload = {
                 "usuarioId": str(user_id),
                 "titulo": f"Recordatorio: {habit_name}",
@@ -60,6 +65,7 @@ def create_healthy_habit_reminder(
             httpx.post(
                 f"{NOTIFICATIONS_SERVICE_URL}/api/notificaciones",
                 json=payload,
+                headers=headers,
                 timeout=10.0,
             )
         except Exception:
@@ -78,10 +84,15 @@ def create_healthy_habit_reminder(
 
 
 @tool
-def list_reminders(user_id: int) -> str:
+def list_reminders(user_id: int, auth_token: str = "") -> str:
     """Lista todos los recordatorios activos del usuario.
     Usa esta herramienta cuando el usuario pregunte por sus recordatorios,
-    hábitos establecidos, o quiera ver qué rutinas tiene configuradas."""
+    hábitos establecidos, o quiera ver qué rutinas tiene configuradas.
+    
+    Args:
+        user_id: ID del usuario.
+        auth_token: Token JWT de autenticación.
+    """
     try:
         reminders = get_reminders(user_id, only_active=True)
 
@@ -108,13 +119,14 @@ def list_reminders(user_id: int) -> str:
 
 
 @tool
-def delete_reminder(reminder_id: int) -> str:
+def delete_reminder(reminder_id: int, auth_token: str = "") -> str:
     """Desactiva un recordatorio existente.
     Usa esta herramienta cuando el usuario quiera eliminar o desactivar
     un recordatorio específico. Necesitas el ID del recordatorio.
 
     Args:
         reminder_id: ID del recordatorio a desactivar.
+        auth_token: Token JWT de autenticación.
     """
     try:
         success = deactivate_reminder(reminder_id)

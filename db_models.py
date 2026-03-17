@@ -83,7 +83,7 @@ class Reminder(Base):
 
 
 # ═══════════════════════════════════════════════════════════
-# Tabla: agent_album_entries (entradas del álbum desde el chat)
+# Tabla: agent_album_entries (metadata ligera de álbum desde el chat)
 # ═══════════════════════════════════════════════════════════
 
 class AlbumEntry(Base):
@@ -92,7 +92,8 @@ class AlbumEntry(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, nullable=False, index=True)
     session_id = Column(String(255), nullable=False)
-    content = Column(Text, nullable=True)
-    image_url = Column(String(500), nullable=True)
+    diary_entry_id = Column(Integer, nullable=True)  # ID en el microservicio de Diario
     entry_type = Column(String(50), nullable=False, default="texto")
+    mood_tag = Column(String(50), nullable=True)     # Emoción asociada (ansiedad, felicidad, etc.)
+    is_synced = Column(Boolean, nullable=False, default=False)  # Si está sincronizado con Diario
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
