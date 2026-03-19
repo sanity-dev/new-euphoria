@@ -2,21 +2,45 @@ import requests
 import httpx
 import os
 from langchain_core.tools import tool
+from twilio.rest import Client
 
 VAPI_API_KEY = os.getenv("VAPI_API_KEY")
 VAPI_ASSISTANT_ID = os.getenv("VAPI_ASSISTANT_ID")
 VAPI_PHONE_NUMBER_ID = os.getenv("VAPI_PHONE_NUMBER_ID")
+
+TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
+TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
+TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")
 
 USERS_SERVICE_URL = os.getenv("USERS_SERVICE_URL", "http://localhost:8081")
 
 # Importar para obtener el historial
 from database import get_messages
 
+def send_sms_emergency(telefono: str, nombre_usuario: str, contexto: str) -> str:
+    """Envía SMS al contacto de emergencia como fallback si la llamada falla."""
+    try:
+        client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+        message = client.messages.create(
+            body=(
+                f"Hola, te contactamos desde la aplicación Sanity. "
+                f"{nombre_usuario} te registró como su contacto de emergencia. "
+                f"Por favor comunícate con él/ella lo antes posible. "
+                f"Motivo: {contexto}"
+            ),
+            from_=TWILIO_PHONE_NUMBER,
+            to=telefono
+        )
+        print(f"[SMS] Enviado correctamente a {telefono} - SID: {message.sid}")
+        return "sms_ok"
+    except Exception as e:
+        print(f"[SMS] Error al enviar SMS: {str(e)}")
+        return f"sms_error: {str(e)}"
 
 @tool
 def call_emergency_contact(user_id: int, auth_token: str, session_id: str = "") -> str:
     """
-    Realiza una llamada al contacto de emergencia del usuario usando IA.
+    Realiza una llamada al contacto de emergencia del usuario usando IA. Si la llamada falla, envía un SMS como respaldo.
     """
 
     if not auth_token:
@@ -78,6 +102,15 @@ def call_emergency_contact(user_id: int, auth_token: str, session_id: str = "") 
                 "name": nombre_usuario
             },
             "assistantOverrides": {
+                 "endCallPhrases": [
+                    "así está bien",
+                    "hasta luego",
+                    "adiós",
+                    "chao",
+                    "eso es todo",
+                    "entendido",
+                    "muchas gracias"
+                ],
                 "variableValues": {
                     "contexto_usuario": contexto,
                     "nombre_usuario": nombre_usuario
@@ -110,6 +143,24 @@ def call_emergency_contact(user_id: int, auth_token: str, session_id: str = "") 
             f"Teléfono: {telefono}\n\n"
             "Le informaré sobre la situación para que pueda brindarte apoyo."
         )
+   # Llamada falló — intentar SMS como respaldo
+        error_data = vapi_response.json() if vapi_response.text else "Sin detalles"
+        print(f"[TOOL: call_emergency_contact] Error Vapi ({vapi_response.status_code}): {error_data}")
+        print(f"[TOOL: call_emergency_contact] Intentando SMS como respaldo...")
+
+        sms_result = send_sms_emergency(telefono, nombre_usuario, contexto)
+
+        if sms_result == "sms_ok":
+            return (
+                f"📵 No se pudo realizar la llamada, pero se envió un SMS al contacto de emergencia.\n"
+                f"Contacto: {contacto}\n"
+                f"Teléfono: {telefono}"
+            )
+        else:
+            return (
+                f"❌ No se pudo contactar al contacto de emergencia por llamada ni SMS.\n"
+                f"Por favor intenta comunicarte manualmente con {contacto} al {telefono}."
+            )
 
     except httpx.HTTPStatusError as e:
         if e.response.status_code == 401:
