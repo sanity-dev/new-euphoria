@@ -20,15 +20,15 @@ def main():
         print("   El agente funcionará sin persistencia hasta que se resuelva.")
 
     # Iniciar servidor FastAPI
-    print("🚀 Iniciando servidor en http://localhost:5000")
-    print("   Documentación: http://localhost:5000/docs")
+    print("🚀 Iniciando servidor en http://localhost:8000")
+    print("   Documentación: http://localhost:8000/docs")
     print("=" * 50)
 
     uvicorn.run(
         "api:app",
         host="0.0.0.0",
-        port=5000,
-        reload=True,
+        port=8000,
+        reload=False,
     )
 
 
