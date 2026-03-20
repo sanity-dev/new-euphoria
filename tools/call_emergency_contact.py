@@ -22,12 +22,9 @@ def send_sms_emergency(telefono: str, nombre_usuario: str) -> str:
         client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
         message = client.messages.create(
             body=(
-                f"Hola, te contactamos desde la aplicación Sanity. "
-                f"{nombre_usuario} te registró como su contacto de emergencia. "
-                f"Por favor comunícate con él/ella lo antes posible. "
-                f"{nombre_usuario} podría estar pasando por un momento emocional difícil "
-                f"y necesita apoyo de su contacto de confianza."
-                f"También puedes contactar al número 106 (línea de apoyo emocional en Colombia)"
+                f"Sanity: {nombre_usuario} necesita tu apoyo. "
+                f"Contactalo/a lo antes posible. "
+                f"Linea crisis Colombia: 106"
             ),
             from_=TWILIO_PHONE_NUMBER,
             to=telefono
