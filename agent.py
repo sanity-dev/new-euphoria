@@ -340,6 +340,7 @@ def _tool_needs_user_id(tool_name: str) -> bool:
         "list_reminders",
         "contact_emergency",
         "get_emergency_contact_info",
+        "call_emergency_contact"
     }
 
 
