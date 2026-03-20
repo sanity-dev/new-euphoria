@@ -14,11 +14,10 @@ TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")
 
 USERS_SERVICE_URL = os.getenv("USERS_SERVICE_URL", "http://localhost:8081")
 
-# Importar para obtener el historial
 from database import get_messages
 
 def send_sms_emergency(telefono: str, nombre_usuario: str, contexto: str) -> str:
-    """Envía SMS al contacto de emergencia como fallback si la llamada falla."""
+    """Envía SMS al contacto de emergencia."""
     try:
         client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
         message = client.messages.create(
@@ -40,7 +39,8 @@ def send_sms_emergency(telefono: str, nombre_usuario: str, contexto: str) -> str
 @tool
 def call_emergency_contact(user_id: int, auth_token: str, session_id: str = "") -> str:
     """
-    Realiza una llamada al contacto de emergencia del usuario usando IA. Si la llamada falla, envía un SMS como respaldo.
+    Realiza una llamada al contacto de emergencia del usuario usando IA
+    y envía un SMS siempre, sin importar si la llamada fue exitosa o no.
     """
 
     if not auth_token:
@@ -62,7 +62,6 @@ def call_emergency_contact(user_id: int, auth_token: str, session_id: str = "") 
         contacto = user_data.get("contactoEmergencia")
         telefono = user_data.get("telefonoContactoEmergencia")
         nombre_usuario = user_data.get("nombre", "Un usuario")
-        mensaje_emergencia = user_data.get("mensajeEmergencia", "")
 
         if not telefono:
             return "⚠️ El usuario no tiene número de contacto de emergencia configurado."
@@ -71,12 +70,11 @@ def call_emergency_contact(user_id: int, auth_token: str, session_id: str = "") 
         mensajes_recientes = []
         if session_id:
             try:
-                # Obtener los últimos 8 mensajes (suficiente para contexto)
                 mensajes_recientes = get_messages(session_id, limit=8, include_inactive=True)
             except Exception as e:
                 print(f"[TOOL: call_emergency_contact] Error obteniendo historial: {e}")
 
-        # Generar el resumen automático (IGNORAMOS mensaje_emergencia por petición del usuario)
+        # Generar contexto
         if mensajes_recientes:
             historial_texto = "\n".join([f"- {m['rol'].capitalize()}: {m['mensaje']}" for m in mensajes_recientes])
             contexto = (
@@ -90,77 +88,71 @@ def call_emergency_contact(user_id: int, auth_token: str, session_id: str = "") 
                 f"y necesita apoyo de su contacto de confianza."
             )
 
-        # Llamada con VAPI
-        url = "https://api.vapi.ai/call"
+        # ── 1. LLAMADA CON VAPI ──────────────────────────────────────────────
+        llamada_ok = False
+        llamada_detalle = ""
 
-        # VAPI requiere que el número de destino esté en un objeto 'customer'
-        # El campo 'phoneNumberId' se usa para el ID del número desde el que se llama
-        payload = {
-            "assistantId": VAPI_ASSISTANT_ID,
-            "customer": {
-                "number": telefono,
-                "name": nombre_usuario
-            },
-            "assistantOverrides": {
-                 "endCallPhrases": [
-                    "así está bien",
-                    "hasta luego",
-                    "adiós",
-                    "chao",
-                    "eso es todo",
-                    "entendido",
-                    "muchas gracias"
-                ],
-                "variableValues": {
-                    "contexto_usuario": contexto,
-                    "nombre_usuario": nombre_usuario
+        try:
+            url = "https://api.vapi.ai/call"
+            payload = {
+                "assistantId": VAPI_ASSISTANT_ID,
+                "customer": {
+                    "number": telefono,
+                    "name": nombre_usuario
+                },
+                "assistantOverrides": {
+                    "endCallPhrases": [
+                        "así está bien", "hasta luego", "adiós",
+                        "chao", "eso es todo", "entendido", "muchas gracias"
+                    ],
+                    "variableValues": {
+                        "contexto_usuario": contexto,
+                        "nombre_usuario": nombre_usuario
+                    }
                 }
             }
-        }
 
-        # Si tenemos un ID de número configurado (Twilio/Vapi), lo especificamos
-        if VAPI_PHONE_NUMBER_ID:
-            payload["phoneNumberId"] = VAPI_PHONE_NUMBER_ID
+            if VAPI_PHONE_NUMBER_ID:
+                payload["phoneNumberId"] = VAPI_PHONE_NUMBER_ID
 
-        headers_vapi = {
-            "Authorization": f"Bearer {VAPI_API_KEY}",
-            "Content-Type": "application/json"
-        }
+            headers_vapi = {
+                "Authorization": f"Bearer {VAPI_API_KEY}",
+                "Content-Type": "application/json"
+            }
 
-        print(f"[TOOL: call_emergency_contact] Enviando solicitud a Vapi para {telefono}")
-        vapi_response = requests.post(url, json=payload, headers=headers_vapi)
-        
-        if vapi_response.status_code not in [200, 201]:
-            error_data = vapi_response.json() if vapi_response.text else "Sin detalles"
-            print(f"[TOOL: call_emergency_contact] Error Vapi ({vapi_response.status_code}): {error_data}")
-            return f"❌ No se pudo realizar la llamada. Error del servicio: {vapi_response.status_code}"
+            print(f"[TOOL: call_emergency_contact] Enviando solicitud a Vapi para {telefono}")
+            vapi_response = requests.post(url, json=payload, headers=headers_vapi)
 
-        print(f"[TOOL: call_emergency_contact] Vapi Response OK: {vapi_response.status_code}")
+            if vapi_response.status_code in [200, 201]:
+                llamada_ok = True
+                print(f"[TOOL: call_emergency_contact] Vapi Response OK: {vapi_response.status_code}")
+            else:
+                error_data = vapi_response.json() if vapi_response.text else "Sin detalles"
+                llamada_detalle = f"Error Vapi ({vapi_response.status_code}): {error_data}"
+                print(f"[TOOL: call_emergency_contact] {llamada_detalle}")
 
-        return (
-            f"📞 He iniciado una llamada al contacto de emergencia.\n"
-            f"Contacto: {contacto}\n"
-            f"Teléfono: {telefono}\n\n"
-            "Le informaré sobre la situación para que pueda brindarte apoyo."
-        )
-   # Llamada falló — intentar SMS como respaldo
-        error_data = vapi_response.json() if vapi_response.text else "Sin detalles"
-        print(f"[TOOL: call_emergency_contact] Error Vapi ({vapi_response.status_code}): {error_data}")
-        print(f"[TOOL: call_emergency_contact] Intentando SMS como respaldo...")
+        except Exception as e:
+            llamada_detalle = f"Excepción durante la llamada: {str(e)}"
+            print(f"[TOOL: call_emergency_contact] {llamada_detalle}")
 
+        # ── 2. SMS SIEMPRE ───────────────────────────────────────────────────
+        print(f"[TOOL: call_emergency_contact] Enviando SMS a {telefono} (siempre)")
         sms_result = send_sms_emergency(telefono, nombre_usuario, contexto)
 
-        if sms_result == "sms_ok":
-            return (
-                f"📵 No se pudo realizar la llamada, pero se envió un SMS al contacto de emergencia.\n"
-                f"Contacto: {contacto}\n"
-                f"Teléfono: {telefono}"
-            )
+        # ── 3. RESPUESTA COMBINADA ───────────────────────────────────────────
+        lineas = [f"Contacto: {contacto}", f"Teléfono: {telefono}", ""]
+
+        if llamada_ok:
+            lineas.insert(0, "📞 Llamada iniciada correctamente.")
         else:
-            return (
-                f"❌ No se pudo contactar al contacto de emergencia por llamada ni SMS.\n"
-                f"Por favor intenta comunicarte manualmente con {contacto} al {telefono}."
-            )
+            lineas.insert(0, f"📵 No se pudo iniciar la llamada. {llamada_detalle}")
+
+        if sms_result == "sms_ok":
+            lineas.append("📩 SMS enviado correctamente.")
+        else:
+            lineas.append(f"⚠️ No se pudo enviar el SMS. {sms_result}")
+
+        return "\n".join(lineas)
 
     except httpx.HTTPStatusError as e:
         if e.response.status_code == 401:
