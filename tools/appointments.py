@@ -1,6 +1,7 @@
 """
 Sanity Agent – Tool: Appointments
 Gestión de citas con terapeutas a través del microservicio de especialistas.
+Requiere token de autenticación para acceder a los datos.
 """
 
 from __future__ import annotations
@@ -16,13 +17,24 @@ SPECIALIST_SERVICE_URL = os.getenv("SPECIALIST_SERVICE_URL", "http://localhost:8
 
 
 @tool
-def get_upcoming_appointments(user_id: int) -> str:
+def get_upcoming_appointments(user_id: int, auth_token: str) -> str:
     """Obtiene las próximas citas programadas del usuario con sus terapeutas.
     Usa esta herramienta cuando el usuario pregunte por sus citas,
-    cuándo tiene su próxima sesión, o qué terapeutas lo atienden."""
+    cuándo tiene su próxima sesión, o qué terapeutas lo atienden.
+    
+    Args:
+        user_id: ID del usuario.
+        auth_token: Token JWT de autenticación.
+    """
+    if not auth_token:
+        return "⚠️ No se proporcionó token de autenticación."
+    
     try:
+        headers = {"Authorization": f"Bearer {auth_token}"}
+        
         response = httpx.get(
             f"{SPECIALIST_SERVICE_URL}/api/appointment/user/{user_id}",
+            headers=headers,
             timeout=10.0,
         )
         response.raise_for_status()
@@ -41,7 +53,7 @@ def get_upcoming_appointments(user_id: int) -> str:
                 if fecha > now:
                     upcoming.append(apt)
             except (ValueError, TypeError):
-                upcoming.append(apt)  # Si no se puede parsear, incluirla por seguridad
+                upcoming.append(apt)
 
         if not upcoming:
             return "No tienes citas futuras programadas. ¿Te gustaría agendar una?"
@@ -62,19 +74,31 @@ def get_upcoming_appointments(user_id: int) -> str:
         return "\n".join(lines)
 
     except httpx.HTTPStatusError as e:
+        if e.response.status_code == 401:
+            return "⚠️ Token inválido o expirado. Por favor, inicia sesión nuevamente."
         return f"Error al consultar citas: HTTP {e.response.status_code}"
     except Exception as e:
         return f"Error de conexión con el servicio de citas: {str(e)}"
 
 
 @tool
-def get_available_therapists() -> str:
+def get_available_therapists(auth_token: str) -> str:
     """Obtiene la lista de terapeutas disponibles con sus especialidades y horarios.
     Usa esta herramienta cuando el usuario quiera buscar un terapeuta,
-    conocer las opciones disponibles, o antes de agendar una cita."""
+    conocer las opciones disponibles, o antes de agendar una cita.
+    
+    Args:
+        auth_token: Token JWT de autenticación.
+    """
+    if not auth_token:
+        return "⚠️ No se proporcionó token de autenticación."
+    
     try:
+        headers = {"Authorization": f"Bearer {auth_token}"}
+        
         response = httpx.get(
             f"{SPECIALIST_SERVICE_URL}/api/specialist",
+            headers=headers,
             timeout=10.0,
         )
         response.raise_for_status()
@@ -116,6 +140,8 @@ def get_available_therapists() -> str:
         return "\n".join(lines)
 
     except httpx.HTTPStatusError as e:
+        if e.response.status_code == 401:
+            return "⚠️ Token inválido o expirado. Por favor, inicia sesión nuevamente."
         return f"Error al consultar terapeutas: HTTP {e.response.status_code}"
     except Exception as e:
         return f"Error de conexión con el servicio de especialistas: {str(e)}"
@@ -127,6 +153,7 @@ def book_appointment(
     specialist_user_id: int,
     session_type: str,
     date_time: str,
+    auth_token: str,
 ) -> str:
     """Reserva una cita con un terapeuta específico.
     Usa esta herramienta cuando el usuario confirme que quiere agendar una cita.
@@ -137,8 +164,14 @@ def book_appointment(
         specialist_user_id: ID del terapeuta con quien reservar.
         session_type: Tipo de sesión (ej: 'Consulta individual', 'Seguimiento').
         date_time: Fecha y hora en formato ISO 8601 (ej: '2026-03-20T10:00:00').
+        auth_token: Token JWT de autenticación.
     """
+    if not auth_token:
+        return "⚠️ No se proporcionó token de autenticación."
+    
     try:
+        headers = {"Authorization": f"Bearer {auth_token}"}
+        
         payload = {
             "pacienteID": patient_id,
             "specialistUserId": specialist_user_id,
@@ -149,6 +182,7 @@ def book_appointment(
         response = httpx.post(
             f"{SPECIALIST_SERVICE_URL}/api/appointment",
             json=payload,
+            headers=headers,
             timeout=10.0,
         )
         response.raise_for_status()
@@ -163,6 +197,8 @@ def book_appointment(
         )
 
     except httpx.HTTPStatusError as e:
+        if e.response.status_code == 401:
+            return "⚠️ Token inválido o expirado. Por favor, inicia sesión nuevamente."
         error_detail = ""
         try:
             error_detail = e.response.json().get("message", e.response.text)

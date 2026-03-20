@@ -45,6 +45,21 @@ class HistorialResponse(BaseModel):
     total_mensajes: int = 0
 
 
+class ConversationResponse(BaseModel):
+    """Respuesta con los datos de una sesión (conversación) pasada."""
+    session_id: str
+    created_at: str
+    updated_at: str
+    is_active: bool
+    title: str
+
+
+class ConversationListResponse(BaseModel):
+    """Respuesta con la lista de conversaciones del usuario."""
+    conversations: list[ConversationResponse] = Field(default_factory=list)
+    total: int = 0
+
+
 class StatusResponse(BaseModel):
     """Respuesta genérica de estado."""
     status: str

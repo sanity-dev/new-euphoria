@@ -1,6 +1,7 @@
 """
 Sanity Agent – Tool: Emergency Contact
 Envía mensaje o alerta al contacto de emergencia del usuario.
+Requiere token de autenticación para acceder a los datos.
 """
 
 from __future__ import annotations
@@ -15,7 +16,7 @@ NOTIFICATIONS_SERVICE_URL = os.getenv("NOTIFICATIONS_SERVICE_URL", "http://local
 
 
 @tool
-def contact_emergency(user_id: int) -> str:
+def contact_emergency(user_id: int, auth_token: str) -> str:
     """Contacta al contacto de emergencia del usuario enviando una notificación de alerta.
     Usa esta herramienta SOLO cuando el usuario lo pida explícitamente
     o cuando detectes una situación de crisis emocional grave.
@@ -23,11 +24,18 @@ def contact_emergency(user_id: int) -> str:
 
     Args:
         user_id: ID del usuario que solicita contactar a su contacto de emergencia.
+        auth_token: Token JWT de autenticación.
     """
+    if not auth_token:
+        return "⚠️ No se proporcionó token de autenticación."
+    
     try:
-        # 1. Obtener info del contacto de emergencia
+        # 1. Obtener info del contacto de emergencia (con auth)
+        headers = {"Authorization": f"Bearer {auth_token}"}
+        
         response = httpx.get(
             f"{USERS_SERVICE_URL}/api/personas/{user_id}",
+            headers=headers,
             timeout=10.0,
         )
         response.raise_for_status()
@@ -47,7 +55,7 @@ def contact_emergency(user_id: int) -> str:
                 "Línea Nacional de Crisis: 106 (Colombia) o al número de emergencias de tu país."
             )
 
-        # 2. Enviar notificación al sistema
+        # 2. Enviar notificación al sistema (con auth)
         try:
             mensaje = (
                 mensaje_emergencia
@@ -63,6 +71,7 @@ def contact_emergency(user_id: int) -> str:
             httpx.post(
                 f"{NOTIFICATIONS_SERVICE_URL}/api/notificaciones",
                 json=payload,
+                headers=headers,
                 timeout=10.0,
             )
         except Exception:
@@ -89,23 +98,32 @@ def contact_emergency(user_id: int) -> str:
         return "\n".join(response_parts)
 
     except httpx.HTTPStatusError as e:
+        if e.response.status_code == 401:
+            return "⚠️ Token inválido. Por favor, inicia sesión nuevamente."
         return f"Error al acceder al perfil del usuario: HTTP {e.response.status_code}"
     except Exception as e:
         return f"Error al contactar emergencia: {str(e)}"
 
 
 @tool
-def get_emergency_contact_info(user_id: int) -> str:
+def get_emergency_contact_info(user_id: int, auth_token: str) -> str:
     """Obtiene la información del contacto de emergencia del usuario.
     Usa esta herramienta cuando el usuario pregunte quién es su contacto
     de emergencia o quiera verificar la información antes de contactarlo.
 
     Args:
         user_id: ID del usuario.
+        auth_token: Token JWT de autenticación.
     """
+    if not auth_token:
+        return "⚠️ No se proporcionó token de autenticación."
+    
     try:
+        headers = {"Authorization": f"Bearer {auth_token}"}
+        
         response = httpx.get(
             f"{USERS_SERVICE_URL}/api/personas/{user_id}",
+            headers=headers,
             timeout=10.0,
         )
         response.raise_for_status()
@@ -135,5 +153,9 @@ def get_emergency_contact_info(user_id: int) -> str:
 
         return "\n".join(parts)
 
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 401:
+            return "⚠️ Token inválido. Por favor, inicia sesión nuevamente."
+        return f"Error al obtener la información de emergencia: HTTP {e.response.status_code}"
     except Exception as e:
         return f"Error al obtener la información de emergencia: {str(e)}"

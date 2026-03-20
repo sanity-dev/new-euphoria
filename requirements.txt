@@ -1,0 +1,1 @@
+fastapi==0.135.1uvicorn==0.41.0sqlalchemy==2.0.48pyodbc==5.3.0python-dotenv==1.2.2langchain-core==1.2.19langchain-google-genai==4.2.1langsmith==0.7.17httpx==0.28.1requests==2.32.5twilio==9.4.3
