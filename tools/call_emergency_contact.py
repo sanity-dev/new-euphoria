@@ -16,7 +16,7 @@ USERS_SERVICE_URL = os.getenv("USERS_SERVICE_URL", "http://localhost:8081")
 
 from database import get_messages
 
-def send_sms_emergency(telefono: str, nombre_usuario: str, contexto: str) -> str:
+def send_sms_emergency(telefono: str, nombre_usuario: str) -> str:
     """Envía SMS al contacto de emergencia."""
     try:
         client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
@@ -25,7 +25,9 @@ def send_sms_emergency(telefono: str, nombre_usuario: str, contexto: str) -> str
                 f"Hola, te contactamos desde la aplicación Sanity. "
                 f"{nombre_usuario} te registró como su contacto de emergencia. "
                 f"Por favor comunícate con él/ella lo antes posible. "
-                f"Motivo: {contexto}"
+                f"{nombre_usuario} podría estar pasando por un momento emocional difícil "
+                f"y necesita apoyo de su contacto de confianza."
+                f"También puedes contactar al número 106 (línea de apoyo emocional en Colombia)"
             ),
             from_=TWILIO_PHONE_NUMBER,
             to=telefono
@@ -137,7 +139,7 @@ def call_emergency_contact(user_id: int, auth_token: str, session_id: str = "") 
 
         # ── 2. SMS SIEMPRE ───────────────────────────────────────────────────
         print(f"[TOOL: call_emergency_contact] Enviando SMS a {telefono} (siempre)")
-        sms_result = send_sms_emergency(telefono, nombre_usuario, contexto)
+        sms_result = send_sms_emergency(telefono, nombre_usuario)
 
         # ── 3. RESPUESTA COMBINADA ───────────────────────────────────────────
         lineas = [f"Contacto: {contacto}", f"Teléfono: {telefono}", ""]
