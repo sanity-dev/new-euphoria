@@ -312,7 +312,30 @@ async def health_check():
         "service": "sanity-agent",
         "timestamp": datetime.now().isoformat(),
     }
+@app.post("/emergency-call")
+async def trigger_emergency_call(
+    request: MensajeRequest,
+    authorization: Optional[str] = Header(None, alias="Authorization"),
+):
+    """Ejecuta call_emergency_contact directamente sin pasar por el LLM."""
+    auth_token = get_auth_token(authorization)
+    user_id = request.user_id
+    session_id = request.session_id or ""
 
+    if not auth_token:
+        raise HTTPException(status_code=401, detail="Token requerido.")
+    if not user_id:
+        raise HTTPException(status_code=400, detail="user_id requerido.")
+
+    from tools.call_emergency_contact import call_emergency_contact
+
+    result = call_emergency_contact.invoke({
+        "user_id": user_id,
+        "auth_token": auth_token,
+        "session_id": session_id,
+    })
+
+    return {"respuesta": result, "status": "ok"}
 
 # ═══════════════════════════════════════════════════════════
 # Endpoints de Recordatorios
