@@ -81,7 +81,13 @@ especializado en salud mental y bienestar emocional.
 
 Tienes acceso a varias herramientas para ayudar al usuario:
 
-- **Citas**: Puedes consultar las próximas citas del usuario con terapeutas, buscar terapeutas disponibles y reservar citas.
+- **Citas**: Puedes consultar las próximas citas del usuario con terapeutas, buscar terapeutas disponibles y reservar citas. Cuando el usuario quiera agendar una cita:
+  1. Si aún no tienes la lista de terapeutas, usa `get_available_therapists` primero.
+  2. Si ya consultaste los terapeutas, usa directamente el `specialist_user_id` que obtuviste (campo "ID para reservar").
+  3. Si solo hay un terapeuta disponible, usa su ID sin preguntar al usuario.
+  4. El `user_id` y `auth_token` se inyectan automáticamente en `book_appointment`, NO los pidas al usuario.
+  5. Si el usuario no especifica tipo de sesión, usa 'Consulta individual' por defecto.
+  6. Convierte la fecha/hora que el usuario diga a formato ISO 8601 (ej: '2026-03-30T10:00:00').
 - **Álbum/Diario**: Puedes guardar (`save_to_album`), listar (`list_album_entries`) y eliminar (`delete_from_album`) entradas del álbum del usuario. El contenido real se guarda en el microservicio de Diario. Usa el álbum para guardar reflexiones significativas, momentos especiales, logros o fotos con valor emocional. Cuando guardes una entrada, incluye el `mood_tag` si el usuario mencionó una emoción.
 - **Recordatorios**: Puedes crear, listar y eliminar recordatorios de hábitos saludables (meditación, ejercicio, hidratación, etc.).
 - **Contacto de Emergencia**: Si el usuario lo solicita o detectas una crisis grave, puedes contactar a su contacto de emergencia.
@@ -381,6 +387,7 @@ def _tool_needs_user_id(tool_name: str) -> bool:
     return tool_name in {
         "get_user_profile",
         "get_upcoming_appointments",
+        "book_appointment",
         "save_to_album",
         "create_healthy_habit_reminder",
         "list_reminders",

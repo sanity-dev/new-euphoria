@@ -58,16 +58,21 @@ def save_to_album(
         synced = False
         
         try:
+            # Sincronizar con la lógica de JournalService en el front:
+            # /api/diary/{diarioId}/mensajes con el DTO { contenido, tipo }
             payload = {
-                "usuarioId": user_id,
                 "contenido": content,
-                "tipoEntrada": entry_type,
+                "tipo": entry_type,
             }
             if image_url:
                 payload["imagenUrl"] = image_url
             
+            # Usamos session_id como diarioId para vincularlo a la sesión actual
+            url = f"{DIARY_SERVICE_URL}/api/diary/{session_id}/mensajes"
+            print(f"[TOOL: save_to_album] Guardando en {url}")
+            
             response = httpx.post(
-                f"{DIARY_SERVICE_URL}/api/diary/entradas",
+                url,
                 json=payload,
                 timeout=10.0,
             )
@@ -130,14 +135,16 @@ def delete_from_album(user_id: int, diary_entry_id: int) -> str:
         # 1. Eliminar del microservicio de Diario
         deleted_from_diary = False
         try:
+            # Ajustado para usar el nuevo path 'mensajes'
             response = httpx.delete(
-                f"{DIARY_SERVICE_URL}/api/diary/entradas/{diary_entry_id}",
+                f"{DIARY_SERVICE_URL}/api/diary/mensajes/{diary_entry_id}",
                 timeout=10.0,
             )
             if response.status_code < 400:
                 deleted_from_diary = True
-        except Exception:
-            pass  # Continuar aunque falle el servicio de Diario
+        except Exception as e:
+            print(f"[TOOL: delete_from_album] Error al eliminar en Diario: {e}")
+            pass
         
         # 2. Eliminar metadata local (si existe)
         deleted_locally = False
