@@ -63,7 +63,7 @@ def create_healthy_habit_reminder(
                 "tipo": "SISTEMA",
             }
             httpx.post(
-                f"{NOTIFICATIONS_SERVICE_URL}/api/notificaciones",
+                f"{NOTIFICATIONS_SERVICE_URL}/api/notifications",
                 json=payload,
                 headers=headers,
                 timeout=10.0,

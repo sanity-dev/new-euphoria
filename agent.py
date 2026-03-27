@@ -320,6 +320,8 @@ async def process_message(
             # Inyectar auth_token si la herramienta lo necesita
             if auth_token and _tool_needs_auth_token(tool_name):
                 tool_args["auth_token"] = auth_token
+                # Verificar si el token está expirado antes de usarlo
+                _warn_if_token_expired(auth_token, tool_name)
                 print(f"[AGENT] Inyectado auth_token (longitud={len(auth_token)})")
             elif _tool_needs_auth_token(tool_name) and not auth_token:
                 print(f"[AGENT] WARNING: {tool_name} requiere auth_token pero no se proporcionó")
@@ -533,3 +535,30 @@ def _build_autonomous_crisis_response() -> str:
         "Quédate conmigo aquí en el chat. Si estás en peligro inmediato, llama ahora al número "
         "de emergencias de tu país o a la Línea 106 (Colombia)."
     )
+
+
+def _warn_if_token_expired(token: str, tool_name: str) -> None:
+    """Decodifica el payload del JWT (sin verificar firma) y avisa si está expirado."""
+    import base64
+    import json as _json
+
+    try:
+        parts = token.split(".")
+        if len(parts) != 3:
+            return
+        # Añadir padding si es necesario
+        payload_b64 = parts[1] + "=" * (4 - len(parts[1]) % 4)
+        payload = _json.loads(base64.urlsafe_b64decode(payload_b64))
+        exp = payload.get("exp")
+        if exp:
+            remaining = exp - datetime.now().timestamp()
+            if remaining <= 0:
+                print(
+                    f"[AGENT] ⚠️ TOKEN EXPIRADO para {tool_name}. "
+                    f"Expiró hace {abs(int(remaining))}s. "
+                    "El usuario debe volver a iniciar sesión."
+                )
+            else:
+                print(f"[AGENT] Token válido para {tool_name}. Expira en {int(remaining)}s.")
+    except Exception:
+        pass  # No interrumpir el flujo si falla el decode
