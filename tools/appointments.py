@@ -99,7 +99,7 @@ def get_available_therapists(auth_token: str) -> str:
         response = httpx.get(
             f"{SPECIALIST_SERVICE_URL}/api/specialist",
             headers=headers,
-            timeout=10.0,
+            timeout=20.0,
         )
         response.raise_for_status()
         specialists = response.json()
@@ -141,8 +141,12 @@ def get_available_therapists(auth_token: str) -> str:
 
     except httpx.HTTPStatusError as e:
         if e.response.status_code == 401:
-            return "⚠️ Token inválido o expirado. Por favor, inicia sesión nuevamente."
+            return "⚠️ Tu sesión ha expirado. Por favor, cierra sesión, vuelve a iniciarla y escríbeme de nuevo."
+        if e.response.status_code == 403:
+            return "⚠️ No tienes permisos para consultar esta información."
         return f"Error al consultar terapeutas: HTTP {e.response.status_code}"
+    except httpx.TimeoutException:
+        return "⚠️ El servicio de terapeutas tardó demasiado en responder. Es posible que tu sesión haya expirado. Por favor, cierra sesión y vuelve a iniciarla."
     except Exception as e:
         return f"Error de conexión con el servicio de especialistas: {str(e)}"
 
