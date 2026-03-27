@@ -97,9 +97,9 @@ def get_available_therapists(auth_token: str) -> str:
         headers = {"Authorization": f"Bearer {auth_token}"}
         
         response = httpx.get(
-            f"{SPECIALIST_SERVICE_URL}/api/specialist",
+            f"{SPECIALIST_SERVICE_URL}/api/specialist/",
             headers=headers,
-            timeout=20.0,
+            timeout=10.0,
         )
         response.raise_for_status()
         specialists = response.json()
