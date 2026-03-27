@@ -6,6 +6,7 @@ Agente terapeuta profesional con LangChain + Gemini.
 from __future__ import annotations
 
 import os
+import re
 from datetime import datetime
 
 from dotenv import load_dotenv
@@ -80,7 +81,13 @@ especializado en salud mental y bienestar emocional.
 
 Tienes acceso a varias herramientas para ayudar al usuario:
 
-- **Citas**: Puedes consultar las próximas citas del usuario con terapeutas, buscar terapeutas disponibles y reservar citas.
+- **Citas**: Puedes consultar las próximas citas del usuario con terapeutas, buscar terapeutas disponibles y reservar citas. Cuando el usuario quiera agendar una cita:
+  1. Si aún no tienes la lista de terapeutas, usa `get_available_therapists` primero.
+  2. Si ya consultaste los terapeutas, usa directamente el `specialist_user_id` que obtuviste (campo "ID para reservar").
+  3. Si solo hay un terapeuta disponible, usa su ID sin preguntar al usuario.
+  4. El `user_id` y `auth_token` se inyectan automáticamente en `book_appointment`, NO los pidas al usuario.
+  5. Si el usuario no especifica tipo de sesión, usa 'Consulta individual' por defecto.
+  6. Convierte la fecha/hora que el usuario diga a formato ISO 8601 (ej: '2026-03-30T10:00:00').
 - **Álbum/Diario**: Puedes guardar (`save_to_album`), listar (`list_album_entries`) y eliminar (`delete_from_album`) entradas del álbum del usuario. El contenido real se guarda en el microservicio de Diario. Usa el álbum para guardar reflexiones significativas, momentos especiales, logros o fotos con valor emocional. Cuando guardes una entrada, incluye el `mood_tag` si el usuario mencionó una emoción.
 - **Recordatorios**: Puedes crear, listar y eliminar recordatorios de hábitos saludables (meditación, ejercicio, hidratación, etc.).
 - **Contacto de Emergencia**: Si el usuario lo solicita o detectas una crisis grave, puedes contactar a su contacto de emergencia.
@@ -118,21 +125,26 @@ Sugiere buscar apoyo fuera de la aplicación.
 Puedes mencionar recursos como:
 - Línea 106 en Colombia (apoyo psicológico)
 
-### Paso 4: Contacto de emergencia
-Si el usuario tiene registrado un contacto de emergencia, pregunta si desea que se le contacte para brindarle apoyo.
+### Paso 4: Contacto de emergencia (ACTIVACIÓN AUTÓNOMA)
+Si detectas intención clara de autolesión, suicidio o pensamiento de no querer vivir,
+**NO preguntes permiso**. Activa de forma autónoma call_emergency_contact para:
+- Notificar inmediatamente al contacto de emergencia del usuario
+- Enviar SMS de alerta con contexto
+- Realizar llamada IA al número del contacto de emergencia
 
-Si el usuario confirma que desea contactar a su contacto de emergencia,
-debes utilizar la herramienta:
+Esta decisión es no negociable para evitar que el usuario en crisis rechace la ayuda.
 
-call_emergency_contact
+**Indicadores de activación autónoma:**
+- Expresión clara de intención suicida ("quiero matarme", "me voy a matar")
+- Acciones de autolesión en progreso o consumadas ("ya me corté", "ya tomé pastillas")
+- Desesperanza severa + intención ("no tengo salida" + "quiero morir")
+- Planes específicos con medios disponibles
 
-y enviar:
-- el número del contacto
-- un breve resumen del contexto emocional del usuario.
-
-### Paso 5: Situaciones de alto riesgo
-Si el usuario expresa intención clara de hacerse daño o la situación parece urgente,
-puedes sugerir contactar inmediatamente a su contacto de apoyo o a servicios de emergencia.
+En este escenario de alto riesgo:
+- Ejecuta call_emergency_contact de forma automática sin solicitar confirmación.
+- Informa con calma y empatía que activaste apoyo de emergencia por su seguridad.
+- Mantén acompañamiento activo en el chat.
+- Sugiere contactar a emergencias locales (Línea 106 en Colombia, etc.).
 
 Mantén siempre un tono calmado, empático y de apoyo.
 
@@ -228,11 +240,54 @@ async def process_message(
     # 2. Guardar mensaje del usuario
     save_message(conversation_id, "usuario", message)
 
-    # 3. Construir mensajes y ejecutar el agente
-    messages = _build_messages(session_id, user_id, message)
-
     acciones = []
-    emociones = []
+    emociones = _detect_emotions(message)
+
+    # 3. Evaluación de riesgo alto para activar apoyo de emergencia autónomo
+    crisis_eval = _assess_high_risk_self_harm(message)
+    if crisis_eval["auto_emergency_call"]:
+        crisis_response = _build_autonomous_crisis_response()
+        if user_id and auth_token:
+            try:
+                emergency_result = call_emergency_contact.invoke(
+                    {
+                        "user_id": user_id,
+                        "auth_token": auth_token,
+                        "session_id": session_id,
+                    }
+                )
+                acciones.append("call_emergency_contact: AUTO_OK")
+                crisis_response = (
+                    f"{crisis_response}\n\n"
+                    "Se activó de forma automática tu contacto de emergencia para cuidarte.\n"
+                    f"Detalle: {emergency_result}"
+                )
+            except Exception as e:
+                acciones.append("call_emergency_contact: AUTO_ERROR")
+                crisis_response = (
+                    f"{crisis_response}\n\n"
+                    "Intenté activar automáticamente a tu contacto de emergencia, "
+                    f"pero ocurrió un error técnico: {str(e)}\n"
+                    "Si estás en peligro inmediato, llama al número de emergencias de tu país ahora mismo."
+                )
+        else:
+            acciones.append("call_emergency_contact: AUTO_SKIPPED_MISSING_CONTEXT")
+            crisis_response = (
+                f"{crisis_response}\n\n"
+                "Detecté una situación de riesgo alto, pero no tengo los datos de autenticación "
+                "necesarios para contactar automáticamente a tu red de apoyo desde aquí.\n"
+                "Si estás en peligro inmediato, llama al número de emergencias de tu país ahora."
+            )
+
+        save_message(conversation_id, "asistente", crisis_response, emociones)
+        return {
+            "respuesta": crisis_response,
+            "emociones_detectadas": emociones,
+            "acciones_realizadas": acciones,
+        }
+
+    # 4. Construir mensajes y ejecutar el agente
+    messages = _build_messages(session_id, user_id, message)
 
     # Loop de tool-calling: el agente puede pedir herramientas múltiples veces
     max_iterations = 5
@@ -305,10 +360,7 @@ async def process_message(
     else:
         final_text = str(content)
 
-    # 5. Detectar emociones simples en el mensaje del usuario
-    emociones = _detect_emotions(message)
-
-    # 6. Guardar respuesta del agente
+    # 5. Guardar respuesta del agente
     save_message(conversation_id, "asistente", final_text, emociones)
 
     return {
@@ -335,6 +387,7 @@ def _tool_needs_user_id(tool_name: str) -> bool:
     return tool_name in {
         "get_user_profile",
         "get_upcoming_appointments",
+        "book_appointment",
         "save_to_album",
         "create_healthy_habit_reminder",
         "list_reminders",
@@ -396,3 +449,87 @@ def _detect_emotions(text: str) -> list[str]:
                 break
 
     return detected if detected else ["neutral"]
+
+
+def _assess_high_risk_self_harm(text: str) -> dict:
+    """Evalúa riesgo de autolesión/suicidio con umbral alto para minimizar falsas alarmas."""
+    text_lower = text.lower().strip()
+
+    if not text_lower:
+        return {"auto_emergency_call": False, "score": 0}
+
+    # Frases de negación/protección que suelen indicar ausencia de intención actual.
+    protective_patterns = [
+        r"\bno\s+quiero\s+(morir|matarme|hacerme\s+daño)\b",
+        r"\bno\s+me\s+voy\s+a\s+(matar|hacer\s+daño)\b",
+        r"\bsolo\s+estoy\s+hablando\b",
+        r"\bno\s+lo\s+har[eé]\b",
+    ]
+    if any(re.search(pattern, text_lower) for pattern in protective_patterns):
+        return {"auto_emergency_call": False, "score": 0}
+
+    immediate_critical_patterns = [
+        r"\b(me\s+voy\s+a\s+matar(\s+hoy|\s+ahora)?)\b",
+        r"\b(quiero\s+acabar\s+con\s+mi\s+vida\s+ahora)\b",
+        r"\b(ya\s+me\s+tom[eé]\s+pastillas)\b",
+        r"\b(ya\s+me\s+cort[eé])\b",
+        r"\b(tengo\s+\w+\s+para\s+matarme)\b",
+        r"\b(voy\s+a\s+suicidarme)\b",
+    ]
+    if any(re.search(pattern, text_lower) for pattern in immediate_critical_patterns):
+        return {"auto_emergency_call": True, "score": 100}
+
+    intent_patterns = [
+        r"\bquiero\s+(morir|matarme|acabar\s+con\s+mi\s+vida)\b",
+        r"\bestoy\s+pensando\s+en\s+(suicidarme|matarme)\b",
+        r"\bno\s+quiero\s+seguir\s+viviendo\b",
+        r"\bser[ií]a\s+mejor\s+si\s+no\s+estuviera\b",
+        r"\bquiero\s+hacerme\s+daño\b",
+    ]
+    plan_or_means_patterns = [
+        r"\btengo\s+un\s+plan\b",
+        r"\bya\s+decid[ií]\b",
+        r"\best[aá]\s+noche\b",
+        r"\bhoy\b",
+        r"\bahora\b",
+        r"\bpastillas\b",
+        r"\bcuchillo\b",
+        r"\bcuerda\b",
+        r"\bpuente\b",
+        r"\bdespedirme\b",
+    ]
+    severe_hopelessness_patterns = [
+        r"\bno\s+tengo\s+salida\b",
+        r"\bno\s+puedo\s+m[aá]s\b",
+        r"\bnadie\s+me\s+necesita\b",
+        r"\bsoy\s+una\s+carga\b",
+    ]
+
+    has_intent = any(re.search(pattern, text_lower) for pattern in intent_patterns)
+    has_plan_or_means = any(re.search(pattern, text_lower) for pattern in plan_or_means_patterns)
+    has_severe_hopelessness = any(re.search(pattern, text_lower) for pattern in severe_hopelessness_patterns)
+
+    # Umbral estricto: intención + (plan/medios o desesperanza severa)
+    score = 0
+    if has_intent:
+        score += 60
+    if has_plan_or_means:
+        score += 25
+    if has_severe_hopelessness:
+        score += 15
+
+    return {
+        "auto_emergency_call": has_intent and (has_plan_or_means or has_severe_hopelessness),
+        "score": score,
+    }
+
+
+def _build_autonomous_crisis_response() -> str:
+    """Respuesta estándar cuando se activa protocolo autónomo de alto riesgo."""
+    return (
+        "Gracias por contarme esto. Lo que estás viviendo importa y tu seguridad es prioridad.\n\n"
+        "Detecté señales de riesgo alto y activé automáticamente apoyo de emergencia para cuidarte. "
+        "No estás solo/a en este momento.\n\n"
+        "Quédate conmigo aquí en el chat. Si estás en peligro inmediato, llama ahora al número "
+        "de emergencias de tu país o a la Línea 106 (Colombia)."
+    )

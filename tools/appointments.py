@@ -149,7 +149,7 @@ def get_available_therapists(auth_token: str) -> str:
 
 @tool
 def book_appointment(
-    patient_id: int,
+    user_id: int,
     specialist_user_id: int,
     session_type: str,
     date_time: str,
@@ -157,14 +157,19 @@ def book_appointment(
 ) -> str:
     """Reserva una cita con un terapeuta específico.
     Usa esta herramienta cuando el usuario confirme que quiere agendar una cita.
-    Necesitas: el ID del paciente, el ID del terapeuta, tipo de sesión y la fecha/hora.
+    El user_id (paciente) y auth_token se inyectan automáticamente.
+    Solo necesitas proporcionar: specialist_user_id, session_type y date_time.
+
+    IMPORTANTE: Usa el specialist_user_id que obtuviste de get_available_therapists.
+    Si solo hay un terapeuta disponible, usa su ID directamente sin preguntar.
+    Si el usuario no especifica tipo de sesión, usa 'Consulta individual' por defecto.
 
     Args:
-        patient_id: ID del usuario/paciente que reserva.
-        specialist_user_id: ID del terapeuta con quien reservar.
+        user_id: ID del usuario/paciente que reserva (se inyecta automáticamente).
+        specialist_user_id: ID del terapeuta con quien reservar (obtenido de get_available_therapists).
         session_type: Tipo de sesión (ej: 'Consulta individual', 'Seguimiento').
         date_time: Fecha y hora en formato ISO 8601 (ej: '2026-03-20T10:00:00').
-        auth_token: Token JWT de autenticación.
+        auth_token: Token JWT de autenticación (se inyecta automáticamente).
     """
     if not auth_token:
         return "⚠️ No se proporcionó token de autenticación."
@@ -173,7 +178,7 @@ def book_appointment(
         headers = {"Authorization": f"Bearer {auth_token}"}
         
         payload = {
-            "pacienteID": patient_id,
+            "pacienteID": user_id,
             "specialistUserId": specialist_user_id,
             "tipoSesion": session_type,
             "fecha": date_time,

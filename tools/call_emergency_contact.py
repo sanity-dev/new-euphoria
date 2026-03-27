@@ -16,20 +16,25 @@ USERS_SERVICE_URL = os.getenv("USERS_SERVICE_URL", "http://localhost:8081")
 
 from database import get_messages
 
-def send_sms_emergency(telefono: str, nombre_usuario: str) -> str:
+def send_sms_emergency(telefono_contacto: str, nombre_usuario: str, telefono_usuario: str) -> str:
     """Envía SMS al contacto de emergencia."""
     try:
         client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+        
+        # Formatear el teléfono del usuario para mostrarlo en el mensaje
+        tel_formateado = telefono_usuario if telefono_usuario else "No disponible"
+        
         message = client.messages.create(
             body=(
                 f"Sanity: {nombre_usuario} necesita tu apoyo. "
-                f"Contactalo/a lo antes posible. "
-                f"Linea crisis Colombia: 106"
+                f"Su número es: {tel_formateado}. "
+                f"Contáctalo/a lo antes posible. "
+                f"Línea crisis Colombia: 106"
             ),
             from_=TWILIO_PHONE_NUMBER,
-            to=telefono
+            to=telefono_contacto
         )
-        print(f"[SMS] Enviado correctamente a {telefono} - SID: {message.sid}")
+        print(f"[SMS] Enviado correctamente a {telefono_contacto} - SID: {message.sid}")
         return "sms_ok"
     except Exception as e:
         print(f"[SMS] Error al enviar SMS: {str(e)}")
@@ -59,10 +64,11 @@ def call_emergency_contact(user_id: int, auth_token: str, session_id: str = "") 
         user_data = response.json()
 
         contacto = user_data.get("contactoEmergencia")
-        telefono = user_data.get("telefonoContactoEmergencia")
+        telefono_emergencia = user_data.get("telefonoContactoEmergencia")
         nombre_usuario = user_data.get("nombre", "Un usuario")
+        telefono_usuario = user_data.get("telefono")
 
-        if not telefono:
+        if not telefono_emergencia:
             return "⚠️ El usuario no tiene número de contacto de emergencia configurado."
 
         # Obtener historial reciente para generar el resumen automático
@@ -96,7 +102,7 @@ def call_emergency_contact(user_id: int, auth_token: str, session_id: str = "") 
             payload = {
                 "assistantId": VAPI_ASSISTANT_ID,
                 "customer": {
-                    "number": telefono,
+                    "number": telefono_emergencia,
                     "name": nombre_usuario
                 },
                 "assistantOverrides": {
@@ -119,7 +125,7 @@ def call_emergency_contact(user_id: int, auth_token: str, session_id: str = "") 
                 "Content-Type": "application/json"
             }
 
-            print(f"[TOOL: call_emergency_contact] Enviando solicitud a Vapi para {telefono}")
+            print(f"[TOOL: call_emergency_contact] Enviando solicitud a Vapi para {telefono_emergencia}")
             vapi_response = requests.post(url, json=payload, headers=headers_vapi)
 
             if vapi_response.status_code in [200, 201]:
@@ -135,11 +141,11 @@ def call_emergency_contact(user_id: int, auth_token: str, session_id: str = "") 
             print(f"[TOOL: call_emergency_contact] {llamada_detalle}")
 
         # ── 2. SMS SIEMPRE ───────────────────────────────────────────────────
-        print(f"[TOOL: call_emergency_contact] Enviando SMS a {telefono} (siempre)")
-        sms_result = send_sms_emergency(telefono, nombre_usuario)
+        print(f"[TOOL: call_emergency_contact] Enviando SMS a {telefono_emergencia} (siempre)")
+        sms_result = send_sms_emergency(telefono_emergencia, nombre_usuario, telefono_usuario)
 
         # ── 3. RESPUESTA COMBINADA ───────────────────────────────────────────
-        lineas = [f"Contacto: {contacto}", f"Teléfono: {telefono}", ""]
+        lineas = [f"Contacto: {contacto}", f"Teléfono: {telefono_emergencia}", ""]
 
         if llamada_ok:
             lineas.insert(0, "📞 Llamada iniciada correctamente.")
