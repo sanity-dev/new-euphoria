@@ -35,7 +35,7 @@ def get_upcoming_appointments(user_id: int, auth_token: str) -> str:
         response = httpx.get(
             f"{SPECIALIST_SERVICE_URL}/api/appointment/user/{user_id}",
             headers=headers,
-            timeout=10.0,
+            timeout=30.0,
         )
         response.raise_for_status()
         appointments = response.json()
@@ -99,7 +99,7 @@ def get_available_therapists(auth_token: str) -> str:
         response = httpx.get(
             f"{SPECIALIST_SERVICE_URL}/api/specialist/",
             headers=headers,
-            timeout=10.0,
+            timeout=30.0,
         )
         response.raise_for_status()
         specialists = response.json()
@@ -192,7 +192,7 @@ def book_appointment(
             f"{SPECIALIST_SERVICE_URL}/api/appointment",
             json=payload,
             headers=headers,
-            timeout=10.0,
+            timeout=30.0,
         )
         response.raise_for_status()
         result = response.json()
