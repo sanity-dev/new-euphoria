@@ -127,8 +127,16 @@ def get_available_therapists(auth_token: str) -> str:
                 except json.JSONDecodeError:
                     servicios = [servicios]
 
+            nombre = sp.get('nombre')
+            if not nombre:
+                email = sp.get('email', '')
+                if email:
+                    nombre = email.split('@')[0].replace('.', ' ').title()
+                else:
+                    nombre = 'Terapeuta'
+
             parts = [
-                f"\n{i}. {sp.get('nombre', 'Terapeuta')}",
+                f"\n{i}. {nombre}",
                 f"   Título: {sp.get('tituloProfesional', 'No especificado')}",
                 f"   Especialidades: {', '.join(especialidades) if especialidades else 'General'}",
                 f"   Servicios: {', '.join(servicios) if servicios else 'Consulta'}",
@@ -138,7 +146,10 @@ def get_available_therapists(auth_token: str) -> str:
             if sp.get("disponibilidad"):
                 parts.append(f"   Disponibilidad: {sp['disponibilidad']}")
 
-            parts.append(f"   ID para reservar: {sp.get('userId', sp.get('id', 'N/A'))}")
+            reserva_id = sp.get('userId')
+            if not reserva_id or reserva_id == 0:
+                reserva_id = sp.get('id', 'N/A')
+            parts.append(f"   ID para reservar: {reserva_id}")
             lines.extend(parts)
 
         return "\n".join(lines)
