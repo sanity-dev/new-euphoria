@@ -93,6 +93,9 @@ def get_available_therapists(auth_token: str) -> str:
     if not auth_token:
         return "⚠️ No se proporcionó token de autenticación."
     
+    import time
+    start_time = time.time()
+    print(f"[DEBUG TOOL] URL: {SPECIALIST_SERVICE_URL}/api/specialist/, user auth length: {len(auth_token)}")
     try:
         headers = {"Authorization": f"Bearer {auth_token}"}
         
@@ -101,6 +104,7 @@ def get_available_therapists(auth_token: str) -> str:
             headers=headers,
             timeout=30.0,
         )
+        print(f"[DEBUG TOOL] httpx.get finalizó en {time.time() - start_time:.2f}s, status: {response.status_code}")
         response.raise_for_status()
         specialists = response.json()
 
@@ -145,9 +149,11 @@ def get_available_therapists(auth_token: str) -> str:
         if e.response.status_code == 403:
             return "⚠️ No tienes permisos para consultar esta información."
         return f"Error al consultar terapeutas: HTTP {e.response.status_code}"
-    except httpx.TimeoutException:
+    except httpx.TimeoutException as ex:
+        print(f"[DEBUG TOOL] ⚠️ TIMEOUT ERROR en {time.time() - start_time:.2f}s - {type(ex).__name__}: {str(ex)}")
         return "⚠️ El servicio de terapeutas tardó demasiado en responder. Es posible que tu sesión haya expirado. Por favor, cierra sesión y vuelve a iniciarla."
     except Exception as e:
+        print(f"[DEBUG TOOL] ❌ OTRA EXCEPCION en {time.time() - start_time:.2f}s - {type(e).__name__}: {str(e)}")
         return f"Error de conexión con el servicio de especialistas: {str(e)}"
 
 
