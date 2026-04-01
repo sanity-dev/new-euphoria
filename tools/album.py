@@ -29,6 +29,7 @@ def save_to_album(
     entry_type: str = "texto",
     image_url: str = "",
     mood_tag: str = "",
+    auth_token: str = "",
 ) -> str:
     """
     Guarda un mensaje, reflexión o foto en el álbum personal del usuario.
@@ -48,6 +49,7 @@ def save_to_album(
         entry_type: Tipo de entrada: 'texto', 'foto', 'momento', 'reflexion', 'logro'.
         image_url: URL de la imagen si es una foto (opcional).
         mood_tag: Emoción asociada (ansiedad, felicidad, tristeza, etc.).
+        auth_token: Token JWT de autenticación.
     
     Returns:
         Mensaje de confirmación o error.
@@ -71,9 +73,12 @@ def save_to_album(
             url = f"{DIARY_SERVICE_URL}/api/diary/{session_id}/mensajes"
             print(f"[TOOL: save_to_album] Guardando en {url}")
             
+            headers = {"Authorization": f"Bearer {auth_token}"} if auth_token else {}
+            
             response = httpx.post(
                 url,
                 json=payload,
+                headers=headers,
                 timeout=10.0,
             )
             
@@ -116,7 +121,7 @@ def save_to_album(
 
 
 @tool
-def delete_from_album(user_id: int, diary_entry_id: int) -> str:
+def delete_from_album(user_id: int, diary_entry_id: int, auth_token: str = "") -> str:
     """
     Elimina una entrada del álbum del usuario.
     Primero elimina del microservicio de Diario, luego la metadata local.
@@ -127,6 +132,7 @@ def delete_from_album(user_id: int, diary_entry_id: int) -> str:
     Args:
         user_id: ID del usuario.
         diary_entry_id: ID de la entrada en el microservicio de Diario.
+        auth_token: Token JWT de autenticación.
     
     Returns:
         Mensaje de confirmación o error.
@@ -136,8 +142,10 @@ def delete_from_album(user_id: int, diary_entry_id: int) -> str:
         deleted_from_diary = False
         try:
             # Ajustado para usar el nuevo path 'mensajes'
+            headers = {"Authorization": f"Bearer {auth_token}"} if auth_token else {}
             response = httpx.delete(
                 f"{DIARY_SERVICE_URL}/api/diary/mensajes/{diary_entry_id}",
+                headers=headers,
                 timeout=10.0,
             )
             if response.status_code < 400:
