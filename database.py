@@ -22,21 +22,15 @@ from db_models import Base, Conversation, Message, Reminder, AlbumEntry
 # ═══════════════════════════════════════════════════════════
 # Conexión con SQLAlchemy (como spring.datasource en Spring)
 # ═══════════════════════════════════════════════════════════
-
-CONNECTION_STRING = os.getenv("AZURE_SQL_CONNECTION_STRING", "")
-
-# Convertir el connection string de ODBC a formato SQLAlchemy
-# SQLAlchemy usa: mssql+pyodbc:///?odbc_connect=<connection_string>
-SQLALCHEMY_URL = f"mssql+pyodbc:///?odbc_connect={CONNECTION_STRING}"
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 engine = create_engine(
-    SQLALCHEMY_URL,
-    echo=False,       # Poner True para ver las queries SQL (como spring.jpa.show-sql=true)
+    DATABASE_URL,
+    echo=False,
     pool_pre_ping=True,
     pool_size=5,
     max_overflow=10,
 )
-
 SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 
 
