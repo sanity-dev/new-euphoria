@@ -92,7 +92,7 @@ class AlbumEntry(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, nullable=False, index=True)
     session_id = Column(String(255), nullable=False)
-    diary_entry_id = Column(Integer, nullable=True)  # ID en el microservicio de Diario
+    diary_entry_id = Column(String(255), nullable=True)  # UUID del mensaje en el microservicio de Diario
     entry_type = Column(String(50), nullable=False, default="texto")
     mood_tag = Column(String(50), nullable=True)     # Emoción asociada (ansiedad, felicidad, etc.)
     is_synced = Column(Boolean, nullable=False, default=False)  # Si está sincronizado con Diario
