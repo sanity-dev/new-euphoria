@@ -21,6 +21,56 @@ from database import (
 DIARY_SERVICE_URL = os.getenv("DIARY_SERVICE_URL", "http://localhost:8083")
 
 
+def _get_or_create_diary(session_id: str, auth_token: str) -> str:
+    """
+    Busca un Diario existente vinculado a la sesión actual, o crea uno nuevo.
+    Retorna el UUID (str) del Diario para usar en endpoints de mensajes.
+    
+    El controlador de Spring espera un UUID como {id} en la ruta,
+    NO un session_id arbitrario.
+    """
+    headers = {"Authorization": f"Bearer {auth_token}"} if auth_token else {}
+    
+    # 1. Obtener la lista de diarios del usuario autenticado
+    resp = httpx.get(
+        f"{DIARY_SERVICE_URL}/api/diary",
+        headers=headers,
+        timeout=10.0,
+    )
+    
+    if resp.status_code < 400:
+        diarios = resp.json()
+        # Buscar si ya existe un diario con título que coincide con la sesión
+        for diario in diarios:
+            titulo = diario.get("titulo", "")
+            if session_id in titulo:
+                diario_id = diario.get("id")
+                print(f"[TOOL: save_to_album] Diario existente encontrado: {diario_id}")
+                return str(diario_id)
+    
+    # 2. No existe → crear un nuevo Diario vinculado a esta sesión
+    print(f"[TOOL: save_to_album] Creando nuevo diario para sesión: {session_id}")
+    create_resp = httpx.post(
+        f"{DIARY_SERVICE_URL}/api/diary",
+        json={
+            "titulo": f"Álbum – {session_id}",
+            "contenido": f"Diario del álbum creado automáticamente para la sesión {session_id}",
+        },
+        headers=headers,
+        timeout=10.0,
+    )
+    
+    if create_resp.status_code < 400:
+        nuevo = create_resp.json()
+        diario_id = nuevo.get("id")
+        print(f"[TOOL: save_to_album] Diario creado: {diario_id}")
+        return str(diario_id)
+    
+    raise RuntimeError(
+        f"No se pudo crear el Diario. Estado: {create_resp.status_code} – {create_resp.text}"
+    )
+
+
 @tool
 def save_to_album(
     user_id: int,
@@ -60,8 +110,10 @@ def save_to_album(
         synced = False
         
         try:
-            # Sincronizar con la lógica de JournalService en el front:
-            # /api/diary/{diarioId}/mensajes con el DTO { contenido, tipo }
+            # Obtener o crear el Diario (UUID real) para esta sesión
+            diario_uuid = _get_or_create_diary(session_id, auth_token)
+            
+            # Construir el payload del mensaje
             payload = {
                 "contenido": content,
                 "tipo": entry_type,
@@ -69,9 +121,9 @@ def save_to_album(
             if image_url:
                 payload["imagenUrl"] = image_url
             
-            # Usamos session_id como diarioId para vincularlo a la sesión actual
-            url = f"{DIARY_SERVICE_URL}/api/diary/{session_id}/mensajes"
-            print(f"[TOOL: save_to_album] Guardando en {url}")
+            # Usar el UUID real del diario, NO el session_id
+            url = f"{DIARY_SERVICE_URL}/api/diary/{diario_uuid}/mensajes"
+            print(f"[TOOL: save_to_album] Guardando mensaje en {url}")
             
             headers = {"Authorization": f"Bearer {auth_token}"} if auth_token else {}
             
@@ -90,7 +142,7 @@ def save_to_album(
                 except Exception:
                     diary_entry_id = None
             else:
-                return f"❌ Error al guardar en el álbum: Servicio de Diario respondió con estado {response.status_code}"
+                return f"❌ Error al guardar en el álbum: Servicio de Diario respondió con estado {response.status_code} – {response.text}"
                 
         except httpx.TimeoutException:
             return "❌ Error al guardar en el álbum: El servicio de Diario no responde. Inténtalo de nuevo más tarde."
