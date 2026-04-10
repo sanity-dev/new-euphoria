@@ -324,7 +324,7 @@ def deactivate_reminder(reminder_id: int) -> bool:
 def save_album_entry_metadata(
     user_id: int,
     session_id: str,
-    diary_entry_id: int,
+    diary_entry_id: Optional[str] = None,
     entry_type: str = "texto",
     mood_tag: Optional[str] = None,
     is_synced: bool = True,
@@ -390,7 +390,7 @@ def delete_album_entry(entry_id: int) -> bool:
         db.close()
 
 
-def get_album_entry_by_diary_id(diary_entry_id: int) -> dict | None:
+def get_album_entry_by_diary_id(diary_entry_id: str) -> dict | None:
     """Obtiene la metadata local basada en el ID del microservicio de Diario."""
     db = get_session()
     try:

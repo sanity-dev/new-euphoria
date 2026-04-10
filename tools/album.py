@@ -113,10 +113,22 @@ def save_to_album(
             # Obtener o crear el Diario (UUID real) para esta sesión
             diario_uuid = _get_or_create_diary(session_id, auth_token)
             
+            # Mapear entry_type del álbum → tipo válido del Diario (enum en BD)
+            # Los tipos del álbum (reflexion, logro, momento) son todos texto
+            # Solo 'foto' se mapea a 'imagen'
+            ALBUM_TO_DIARY_TIPO = {
+                "texto": "TEXTO",
+                "reflexion": "TEXTO",
+                "logro": "TEXTO",
+                "momento": "TEXTO",
+                "foto": "IMAGEN",
+            }
+            diary_tipo = ALBUM_TO_DIARY_TIPO.get(entry_type, "TEXTO")
+            
             # Construir el payload del mensaje
             payload = {
                 "contenido": content,
-                "tipo": entry_type,
+                "tipo": diary_tipo,
             }
             if image_url:
                 payload["imagenUrl"] = image_url
